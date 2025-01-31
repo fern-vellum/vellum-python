@@ -1867,6 +1867,7 @@ export const GenericNodeSerializer: ObjectSchema<
   Omit<GenericNode, "type">
 > = objectSchema({
   id: stringSchema(),
+  label: stringSchema(),
   displayData: propertySchema(
     "display_data",
     GenericNodeDisplayDataSerializer.optional()
@@ -1883,6 +1884,7 @@ export const GenericNodeSerializer: ObjectSchema<
 export declare namespace GenericNodeSerializer {
   interface Raw extends BaseWorkflowNodeSerializer.Raw {
     id: string;
+    label: string;
     base: CodeResourceDefinitionSerializer.Raw;
     display_data?: {
       position?: {
