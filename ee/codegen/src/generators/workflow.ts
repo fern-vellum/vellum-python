@@ -22,7 +22,12 @@ import { GraphAttribute } from "src/generators/graph-attribute";
 import { Inputs } from "src/generators/inputs";
 import { NodeDisplayData } from "src/generators/node-display-data";
 import { WorkflowOutput } from "src/generators/workflow-output";
-import { WorkflowDisplayData, WorkflowEdge } from "src/types/vellum";
+import {
+  NodeDisplayData as NodeDisplayDataType,
+  WorkflowDataNode,
+  WorkflowDisplayData,
+  WorkflowEdge,
+} from "src/types/vellum";
 import { isDefined } from "src/utils/typing";
 
 export declare namespace Workflow {
@@ -105,6 +110,29 @@ export class Workflow {
     );
 
     return outputsClass;
+  }
+
+  private getTargetHandleId(nodeData: WorkflowDataNode): string {
+    let targetHandleId: string;
+    if (nodeData.type === "GENERIC") {
+      // TODO: Fill this out
+      targetHandleId = "";
+    } else if ("targetHandleId" in nodeData.data) {
+      targetHandleId = nodeData.data.targetHandleId;
+    } else {
+      throw new WorkflowGenerationError(
+        `${nodeData.data.label} with id ${nodeData.id} is missing required targetHandleId`
+      );
+    }
+    return targetHandleId;
+  }
+
+  private getLabel(nodeData: WorkflowDataNode): string {
+    if (nodeData.type === "GENERIC") {
+      return nodeData.label;
+    } else {
+      return nodeData.data.label;
+    }
   }
 
   public generateWorkflowClass(): python.Class {
@@ -416,19 +444,59 @@ export class Workflow {
         initializer: python.TypeInstantiation.dict(
           this.workflowContext.workflowOutputContexts.map(
             (workflowOutputContext) => {
-              const terminalNodeData =
+              const finalOutput =
                 workflowOutputContext.getFinalOutputNodeData();
+              let outputNodeId: string;
+              let targetHandleId: string;
+              let outputId: string;
+              let nodeInputId: string | undefined;
+              let name: string;
+              let label: string;
+              let displayData: NodeDisplayDataType | undefined;
+
+              // Final output node
+              if ("type" in finalOutput) {
+                outputNodeId = finalOutput.id;
+                targetHandleId = finalOutput.data.targetHandleId;
+                outputId = finalOutput.data.outputId;
+                nodeInputId = finalOutput.data.nodeInputId;
+                name = finalOutput.data.name;
+                label = finalOutput.data.label;
+                displayData = finalOutput.displayData;
+              } else {
+                // Workflow output value
+                const referencedNode = this.workflowContext.getNodeContext(
+                  finalOutput.value.nodeId
+                );
+                if (!referencedNode) {
+                  throw new WorkflowGenerationError(
+                    `Could not find node ${finalOutput.value.nodeId}`
+                  );
+                }
+                const referencedOutput =
+                  this.workflowContext.getOutputVariableContextById(
+                    finalOutput.outputVariableId
+                  );
+                outputNodeId = referencedNode.getNodeId();
+                targetHandleId = this.getTargetHandleId(
+                  referencedNode.nodeData
+                );
+                outputId = finalOutput.value.nodeOutputId;
+                name = referencedOutput.name;
+                label = this.getLabel(referencedNode.nodeData);
+                displayData = referencedNode.nodeData.displayData;
+              }
 
               const edge = this.getEdges().find((edge) => {
                 return (
-                  edge.targetNodeId === terminalNodeData.id &&
-                  edge.targetHandleId === terminalNodeData.data.targetHandleId
+                  edge.targetNodeId === outputNodeId &&
+                  edge.targetHandleId === targetHandleId
                 );
               });
 
               if (!edge) {
                 throw new WorkflowGenerationError(
-                  `Could not find edge for terminal node ${terminalNodeData.id}`
+                  `Could not find edge for final output node ${outputNodeId}`
                 );
               }
 
@@ -448,44 +516,38 @@ export class Workflow {
                   arguments_: [
                     python.methodArgument({
                       name: "id",
-                      value: python.TypeInstantiation.uuid(
-                        terminalNodeData.data.outputId
-                      ),
+                      value: python.TypeInstantiation.uuid(outputId),
                     }),
                     python.methodArgument({
                       name: "node_id",
-                      value: python.TypeInstantiation.uuid(terminalNodeData.id),
+                      value: python.TypeInstantiation.uuid(outputNodeId),
                     }),
                     python.methodArgument({
                       name: "node_input_id",
-                      value: python.TypeInstantiation.uuid(
-                        terminalNodeData.data.nodeInputId
-                      ),
+                      value: nodeInputId
+                        ? python.TypeInstantiation.uuid(nodeInputId)
+                        : python.TypeInstantiation.none(),
                     }),
                     python.methodArgument({
                       name: "name",
                       value: python.TypeInstantiation.str(
                         // Intentionally use the raw name from the terminal node
                         // Rather than the sanitized name from the output context
-                        terminalNodeData.data.name
+                        name
                       ),
                     }),
                     python.methodArgument({
                       name: "label",
-                      value: python.TypeInstantiation.str(
-                        terminalNodeData.data.label
-                      ),
+                      value: python.TypeInstantiation.str(label),
                     }),
                     python.methodArgument({
                       name: "target_handle_id",
-                      value: python.TypeInstantiation.uuid(
-                        terminalNodeData.data.targetHandleId
-                      ),
+                      value: python.TypeInstantiation.uuid(targetHandleId),
                     }),
                     python.methodArgument({
                       name: "display_data",
                       value: new NodeDisplayData({
-                        nodeDisplayData: terminalNodeData.displayData,
+                        nodeDisplayData: displayData,
                         workflowContext: this.workflowContext,
                       }),
                     }),

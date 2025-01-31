@@ -47,6 +47,7 @@ import { PromptDeploymentNodeContext } from "src/context/node-context/prompt-dep
 import { SubworkflowDeploymentNodeContext } from "src/context/node-context/subworkflow-deployment-node";
 import { TemplatingNodeContext } from "src/context/node-context/templating-node";
 import { TextSearchNodeContext } from "src/context/node-context/text-search-node";
+import { OutputVariableContext } from "src/context/output-variable-context";
 import { WorkflowOutputContext } from "src/context/workflow-output-context";
 import { ApiNode } from "src/generators/nodes/api-node";
 import { CodeExecutionNode } from "src/generators/nodes/code-execution-node";
@@ -64,13 +65,14 @@ import { WorkflowSandboxFile } from "src/generators/workflow-sandbox-file";
 import { WorkflowVersionExecConfigSerializer } from "src/serializers/vellum";
 import {
   EntrypointNode,
+  FinalOutputNode as FinalOutputNodeType,
   WorkflowDataNode,
   WorkflowNodeType as WorkflowNodeTypeEnum,
   WorkflowSandboxInputs,
   WorkflowVersionExecConfig,
 } from "src/types/vellum";
 import { getNodeId } from "src/utils/nodes";
-import { assertUnreachable } from "src/utils/typing";
+import { assertUnreachable, isNilOrEmpty } from "src/utils/typing";
 
 export interface WorkflowProjectGeneratorOptions {
   /**
@@ -333,19 +335,48 @@ ${errors.slice(0, 3).map((err) => {
       this.workflowContext.addInputVariableContext(inputVariableContext);
     });
 
+    this.workflowVersionExecConfig.outputVariables.forEach((outputVariable) => {
+      const outputVariableContext = new OutputVariableContext({
+        outputVariableData: outputVariable,
+      });
+      this.workflowContext.addOutputVariableContext(outputVariableContext);
+    });
+
     let entrypointNode: EntrypointNode | undefined;
     const nodesToGenerate: WorkflowDataNode[] = [];
     await Promise.all(
       this.workflowVersionExecConfig.workflowRawData.nodes
         .map(async (nodeData) => {
           if (nodeData.type === "TERMINAL") {
-            this.workflowContext.addWorkflowOutputContext(
-              new WorkflowOutputContext({
-                workflowContext: this.workflowContext,
-                terminalNodeData: nodeData,
-              })
-            );
-          } else if (nodeData.type === "ENTRYPOINT") {
+            // If we have explicit output values, use those
+            if (
+              !isNilOrEmpty(
+                this.workflowVersionExecConfig.workflowRawData.outputValues
+              )
+            ) {
+              this.workflowVersionExecConfig.workflowRawData.outputValues?.forEach(
+                (outputValue) => {
+                  if (outputValue) {
+                    this.workflowContext.addWorkflowOutputContext(
+                      new WorkflowOutputContext({
+                        workflowContext: this.workflowContext,
+                        workflowOutputValue: outputValue,
+                      })
+                    );
+                  }
+                }
+              );
+            } else {
+              // Otherwise fall back to creating from all terminal nodes
+              this.workflowContext.addWorkflowOutputContext(
+                new WorkflowOutputContext({
+                  workflowContext: this.workflowContext,
+                  terminalNodeData: nodeData as FinalOutputNodeType,
+                })
+              );
+            }
+          }
+          if (nodeData.type === "ENTRYPOINT") {
             if (entrypointNode) {
               throw new WorkflowGenerationError(
                 "Multiple entrypoint nodes found"
@@ -366,6 +397,7 @@ ${errors.slice(0, 3).map((err) => {
           promise.catch((error) => this.workflowContext.addError(error))
         )
     );
+
     if (!entrypointNode) {
       throw new WorkflowGenerationError("Entrypoint node not found");
     }

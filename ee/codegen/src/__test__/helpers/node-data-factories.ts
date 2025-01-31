@@ -1343,32 +1343,33 @@ export function errorNodeDataFactory({
 
 export function genericNodeFactory(
   {
-    name,
+    label,
     nodeTrigger,
     nodePorts,
     nodeAttributes,
     nodeOutputs,
     adornments,
   }: {
-    name: string;
+    label: string;
     nodeTrigger?: NodeTrigger;
     nodePorts?: NodePort[];
     nodeAttributes?: NodeAttribute[];
     nodeOutputs?: NodeOutput[];
     adornments?: AdornmentNode[];
   } = {
-    name: "MyCustomNode",
+    label: "MyCustomNode",
   }
 ): GenericNode {
   const nodeData: GenericNode = {
     id: "node-1",
+    label: label,
     type: WorkflowNodeType.GENERIC,
     base: {
       module: ["vellum", "workflows", "nodes", "bases", "base"],
       name: "BaseNode",
     },
     definition: {
-      name,
+      name: label,
       module: ["my_nodes", "my_custom_node"],
     },
     trigger: nodeTrigger ?? {
