@@ -146,9 +146,11 @@ class TestSuitesClient:
         )
         client.test_suites.upsert_test_suite_test_case(
             id_="id",
+            label="Test Case 1",
             input_values=[
                 NamedTestCaseStringVariableValueRequest(
-                    name="name",
+                    value="Hello, world!",
+                    name="var_1",
                 )
             ],
             evaluation_values=[
@@ -473,9 +475,11 @@ class AsyncTestSuitesClient:
         async def main() -> None:
             await client.test_suites.upsert_test_suite_test_case(
                 id_="id",
+                label="Test Case 1",
                 input_values=[
                     NamedTestCaseStringVariableValueRequest(
-                        name="name",
+                        value="Hello, world!",
+                        name="var_1",
                     )
                 ],
                 evaluation_values=[
